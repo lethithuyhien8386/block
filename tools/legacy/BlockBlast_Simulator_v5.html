@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="vi"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Block Blast · Mô phỏng v5</title>
+<style>
+:root{font-family:system-ui,-apple-system,'Segoe UI',sans-serif;color-scheme:dark;background:#14181f;color:#eff5ff}*{box-sizing:border-box}body{margin:0}.app{max-width:990px;margin:auto;padding:20px}.top{display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap}.eyebrow{font-size:12px;letter-spacing:1.3px;color:#8ca4c9;text-transform:uppercase;font-weight:700}h1{font-size:23px;margin:2px 0 6px}.muted{color:#9babc2;font-size:13px;line-height:1.5}.status-pill{border:1px solid #284c3e;border-radius:40px;background:#142c26;color:#91edbf;padding:9px 14px;font-size:12px;font-weight:700}.main{display:grid;grid-template-columns:minmax(280px,1.12fr) minmax(250px,.88fr);gap:15px;margin-top:18px}.panel{background:#1e2530;border:1px solid #374354;border-radius:17px;padding:15px}.board-box{border-radius:13px;padding:9px;background:linear-gradient(#a07443,#604226);box-shadow:0 8px 24px #080a1088}.board{display:grid;grid-template-columns:repeat(9,1fr);width:100%;aspect-ratio:1;gap:3px;padding:4px;background:#301e13;border:3px solid #312014;border-radius:7px;touch-action:manipulation}.cell{border:1px solid #ffffff10;border-radius:2px;background:linear-gradient(145deg,#755039,#5e402c);min-width:0;cursor:pointer;transition:background .12s}.cell.filled{background:linear-gradient(145deg,#ffdfaa,#d6a75c);border-color:#ffdfab}.cell.ghost{background:#50cda4!important;box-shadow:inset 0 0 0 2px #bbffe3}.cell.focus{box-shadow:inset 0 0 0 2px #54cbff}.cell:hover{outline:1px solid #ffffff88}.tray{display:grid;grid-template-columns:repeat(3,1fr);gap:9px;margin-top:13px}.piece{border:1px solid #495769;background:#273142;border-radius:12px;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100px;gap:9px;color:#eef3ff;cursor:pointer}.piece.active{border-color:#67debe;box-shadow:0 0 0 2px #62bf9c40}.piece.used{opacity:.35;cursor:default}.piece strong{font-size:12px}.tilegrid{display:grid;gap:3px;align-content:center;justify-content:center;min-height:45px}.mini{width:15px;height:15px;border-radius:2px}.mini.fill{background:#f7d392;box-shadow:inset -2px -2px #ac763b}.mini.empty{background:transparent}.section{font-weight:750;font-size:14px;margin:0 0 10px}.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.row+.row{margin-top:9px}select,button{font:inherit}select{background:#263242;color:#eaf2ff;border:1px solid #475668;border-radius:9px;padding:10px;max-width:100%;width:100%;font-size:13px}button{border:1px solid #516077;border-radius:10px;padding:10px 13px;background:#2a3546;color:#e7f0ff;cursor:pointer;font-size:13px;font-weight:700}button:hover{filter:brightness(1.15)}button.primary{background:#1b906c;border-color:#37ae8a}button.danger{background:#47303b;border-color:#a65e69}button:disabled{opacity:.4;cursor:not-allowed}.kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:12px 0}.kpi{padding:11px 8px;text-align:center;border:1px solid #3e4858;border-radius:11px}.kpi b{font-size:23px;display:block}.kpi small{color:#a4b1c2;font-size:11px}.diagnosis{background:#172029;border:1px solid #324050;padding:13px;border-radius:12px;font-size:13px;line-height:1.65;min-height:125px}.label{color:#9fb4cb;font-size:12px}.notice{margin-top:10px;padding:10px 12px;background:#302d21;border-left:3px solid #e6af4e;border-radius:4px;font-size:12px;color:#e5d3aa;line-height:1.5}.log{font-size:12px;font-family:ui-monospace,SFMono-Regular,monospace;color:#aebbd1;white-space:pre-wrap;overflow-y:auto;max-height:126px;min-height:80px;line-height:1.65}input[type=checkbox]{accent-color:#60d5ac}@media(max-width:720px){.app{padding:10px}.main{grid-template-columns:1fr}.top h1{font-size:21px}.panel{padding:12px}.board{gap:2px}}
+.shape-editor{display:grid;grid-template-columns:repeat(5,29px);gap:3px;margin:10px 0 8px}.shape-editor button.editorcell{width:29px;height:29px;padding:0;border-radius:3px;background:#43505d}.shape-editor button.editorcell.active{background:#e5be7a;border-color:#f4d9a4}</style></head><body>
+<div class="app">
+ <div class="top"><div><div class="eyebrow">PIXEL BLOCK AUTO · INTERACTIVE DEBUG</div><h1>Block Blast — Mô phỏng chiến thuật</h1><div class="muted">Dữ liệu mẫu được lấy từ PixelAnalyzer v4; giải thuật chọn nước được chuyển từ StrategyEngine v5 sang JavaScript.</div></div><span class="status-pill" id="runState">● SẴN SÀNG</span></div>
+ <div class="main"><section class="panel"><div class="section">Bàn cờ 9×9 <span style="font-size:12px;color:#99afc6;font-weight:normal">· màu xanh = nước đi được đề xuất</span></div><div class="board-box"><div class="board" id="board" aria-label="Bàn cờ Block Blast"></div></div><div class="tray" id="tray"></div><p class="muted">Chọn một khối rồi chạm vào vị trí góc trên-trái để tự đặt, hoặc chọn <b>Chỉnh ô</b> để thêm/xóa các ô đang chiếm.</p></section>
+ <section class="panel"><h3 class="section">1. Chọn tình huống kiểm tra</h3><select id="scenario"><option value="dense">Ảnh 23/11 gần nhất · 26 ô · 3 khối</option><option value="sparse">Ảnh trước đó · 5 ô · 3 khối</option><option value="empty">Ảnh bàn trống · 3 khối</option><option value="unlock">Bàn khó · phải mở hàng trước</option></select><div class="kpis"><div class="kpi"><b id="filled">26</b><small>Ô đã chiếm</small></div><div class="kpi"><b id="remain">3</b><small>Khối còn</small></div><div class="kpi"><b id="cleared">0</b><small>Hàng/cột xóa</small></div></div><div class="row"><button class="primary" id="suggest">◎ Phân tích</button><button class="primary" id="step">▶ Đặt 1 bước</button><button id="auto">⏩ Tự chạy</button><button class="danger" id="stop">■ Dừng</button></div><div class="row"><button id="undo">↶ Hoàn tác</button><button id="reset">⟳ Khôi phục</button><label style="font-size:12px"><input type="checkbox" id="edit"> Chỉnh ô</label></div><h3 class="section" style="margin-top:18px">2. Tự nhập 3 khối bất kỳ</h3>
+ <div class="row"><label for="editingPiece">Khối muốn sửa</label><select id="editingPiece" style="width:auto"><option value="0">Khối 1</option><option value="1">Khối 2</option><option value="2">Khối 3</option></select></div>
+ <div class="row"><select id="shapePreset"><option value="">Chọn hình khối mẫu…</option><option value="single">1 ô</option><option value="bar2">Dọc 2</option><option value="bar3">Dọc 3</option><option value="bar4">Dọc 4</option><option value="bar5">Dọc 5</option><option value="horizontal3">Ngang 3</option><option value="square2">Vuông 2×2</option><option value="square3">Vuông 3×3</option><option value="ell3">Chữ L 3 ô</option><option value="ell4">Chữ L 4 ô</option><option value="jay4">Chữ J 4 ô</option><option value="tee4">Chữ T 4 ô</option><option value="zig4">Zigzag 4 ô</option><option value="diagonal2">Chéo 2 ô</option></select></div>
+ <div id="shapeEditor" class="shape-editor"></div>
+ <p class="muted">Bấm từng ô trong lưới 5×5 để thêm/xóa ô của hình khối. Có thể nhập hình không nằm trong danh sách.</p>
+ <h3 class="section" style="margin-top:22px">3. Kết quả thuật toán</h3><div class="diagnosis" id="result">Nhấn <b>Phân tích</b> để xem khối nên đặt trước.</div><div class="notice">Mô phỏng giới hạn tìm kiếm; không bảo đảm tối ưu toàn ván khi chưa biết các khối tiếp theo. Chỉ mô phỏng thuật toán và các nước đặt khối. Không chạy APK, không đọc màn hình điện thoại theo thời gian thực và không kiểm tra quyền SCREEN / CLICK / FLOAT.</div><h3 class="section" style="margin-top:18px">4. Nhật ký Debug</h3><div id="log" class="log" role="status" aria-live="polite"></div></section></div>
+</div>
+<script id="solverScript" type="text/plain">
+/* Offline planner for the v5 HTML debug simulator. Mirrors Java's row-bitmask scoring. */
+function solve({board,pieces}, options={}) {
+  const n=board.length, full=(1<<n)-1;
+  const shapes=pieces.map((p,index)=>p&&p.length?{
+    index,height:1+Math.max(...p.map(t=>t[1])),
+    width:1+Math.max(...p.map(t=>t[0])),
+    bits:Array.from({length:1+Math.max(...p.map(t=>t[1]))},(_,row)=>p.reduce((m,t)=>t[1]===row?m|(1<<t[0]):m,0))
+  }:null).filter(Boolean);
+  if(!shapes.length)return null;
+  const start=board.map(row=>row.reduce((m,v,x)=>v?m|(1<<x):m,0));
+  function fits(b,s,y,x){for(let i=0;i<s.height;i++)if(b[y+i]&(s.bits[i]<<x))return false;return true}
+  function place(b,s,y,x){const a=b.slice();for(let r=0;r<s.height;r++)a[y+r]|=s.bits[r]<<x;let cols=full,count=0;for(let r=0;r<n;r++){if(a[r]===full)count++;cols&=a[r]};count+=popcount(cols);if(count)for(let r=0;r<n;r++)a[r]=a[r]===full?0:a[r]&~cols;return {board:a,cleared:count}}
+  function popcount(x){let ct=0;while(x){x&=x-1;ct++}return ct}
+  function regions(b){let seen=new Array(n).fill(0),q=[],reg=0;for(let y=0;y<n;y++)for(let x=0;x<n;x++){
+    if(((seen[y]|b[y])&(1<<x))!==0)continue;reg++;q.length=0;q.push(y*n+x);seen[y]|=1<<x;
+    for(let i=0;i<q.length;i++){const p=q[i],r=(p/n)|0,c=p%n;
+      if(r>0&&!(b[r-1]&(1<<c))&&!(seen[r-1]&(1<<c))){seen[r-1]|=1<<c;q.push((r-1)*n+c)}
+      if(r+1<n&&!(b[r+1]&(1<<c))&&!(seen[r+1]&(1<<c))){seen[r+1]|=1<<c;q.push((r+1)*n+c)}
+      if(c>0&&!(b[r]&(1<<(c-1)))&&!(seen[r]&(1<<(c-1)))){seen[r]|=1<<(c-1);q.push(r*n+c-1)}
+      if(c+1<n&&!(b[r]&(1<<(c+1)))&&!(seen[r]&(1<<(c+1)))){seen[r]|=1<<(c+1);q.push(r*n+c+1)}
+    }
+  }return reg}
+  const originalRegions=regions(start);
+  function score(b,cleared){let occ=0,almost=0,dead=0,small=0,open3=0,open23=0,openLine=0;
+    for(let y=0;y<n;y++)occ+=popcount(b[y]);
+    for(let y=0;y<n;y++){let col=0;for(let r=0;r<n;r++)col+=(b[r]>>>y)&1;
+      let rc=popcount(b[y]);if(rc===n-1)almost+=5;else if(rc===n-2)almost+=2;
+      if(col===n-1)almost+=5;else if(col===n-2)almost+=2;}
+    for(let y=0;y<n;y++)for(let x=0;x<n;x++){
+      if(b[y]&(1<<x))continue;let neighbors=0;
+      if(y>0&&!(b[y-1]&(1<<x)))neighbors++;
+      if(y<n-1&&!(b[y+1]&(1<<x)))neighbors++;
+      if(x>0&&!(b[y]&(1<<(x-1))))neighbors++;
+      if(x<n-1&&!(b[y]&(1<<(x+1))))neighbors++;
+      if(neighbors<=1)dead++;
+      if(neighbors===0)small++;
+    }
+    for(let y=0;y<n;y++)for(let x=0;x<=n-3;x++){
+      const mask=7<<x;
+      if(!(b[y]&mask))openLine++;
+      if(y+1<n&&!(b[y]&mask)&&!(b[y+1]&mask))open23++;
+      if(y+2<n&&!(b[y]&mask)&&!(b[y+1]&mask)&&!(b[y+2]&mask))open3++;
+    }
+    const reg=regions(b);
+    return (n*n-occ)+almost*3+open3*1.8+open23*.7+openLine*.2-dead*9-small*35
+      -Math.max(0,reg-originalRegions)*90-Math.max(0,reg-1)*9+cleared*1.5;
+  }
+  let best=null,visits=0,limited=false;
+  const maxVisit=options.maxVisit||220000,deadline=Date.now()+(options.timeoutMs||1150);
+  function consider(b,depth,total,first){
+    if(best&&(depth<best.depth||(depth===best.depth&&total<best.total)))return;
+    const closed=Math.max(0,regions(b)-originalRegions);
+    const value=score(b,total)+first.row*.03;
+    if(!best||depth>best.depth||depth===best.depth&&(total>best.total||total===best.total&&(closed<best.closed||closed===best.closed&&value>best.score))){
+      best={pieceIndex:first.piece,col:first.col,row:first.row,linesCleared:first.cleared,
+            depth,total,closed,score:value};
+    }
+  }
+  const openings=[];
+  for(const s of shapes)for(let y=n-s.height;y>=0;y--)for(let x=0;x<=n-s.width;x++){
+    if(!fits(start,s,y,x))continue;
+    const placed=place(start,s,y,x);
+    openings.push({board:placed.board,piece:s.index,col:x,row:y,cleared:placed.cleared,
+                   rank:placed.cleared*10000+score(placed.board,placed.cleared)+y*.05});
+  }
+  if(!openings.length)return null;
+  openings.sort((a,b)=>b.rank-a.rank);
+  for(const o of openings)consider(o.board,1,o.cleared,o);
+  function dfs(b,mask,depth,total,first){
+    if(depth===shapes.length)return;
+    for(const s of shapes){
+      if(mask&(1<<s.index))continue;
+      for(let y=n-s.height;y>=0;y--)for(let x=0;x<=n-s.width;x++){
+        if(!fits(b,s,y,x))continue;
+        visits++;
+        if(visits>maxVisit||(visits&2047)===0&&Date.now()>deadline){limited=true;return;}
+        const next=place(b,s,y,x),newTotal=total+next.cleared;
+        consider(next.board,depth+1,newTotal,first);
+        if(depth+1<shapes.length)dfs(next.board,mask|(1<<s.index),depth+1,newTotal,first);
+        if(limited)return;
+      }
+    }
+  }
+  for(const o of openings){if(limited||Date.now()>deadline){limited=true;break;}dfs(o.board,1<<o.piece,1,o.cleared,o)}
+  if(best){best.visited=visits;best.exhaustive=!limited;best.openings=openings.length;}
+  return best;
+}
+if(typeof self!=='undefined' && typeof self.postMessage==='function'){
+  self.onmessage=e=>{try{self.postMessage({id:e.data.id,result:solve(e.data.state,e.data.options)})}catch(err){self.postMessage({id:e.data.id,error:String(err)})}}
+}
+if(typeof module!=='undefined')module.exports={solve};
+
+</script>
+<script>
+(()=>{'use strict';
+const $=id=>document.getElementById(id);
+const patterns={
+ single:[[0,0]],bar2:[[0,0],[0,1]],bar3:[[0,0],[0,1],[0,2]],bar4:[[0,0],[0,1],[0,2],[0,3]],bar5:[[0,0],[0,1],[0,2],[0,3],[0,4]],
+ horizontal3:[[0,0],[1,0],[2,0]],square2:[[0,0],[1,0],[0,1],[1,1]],square3:Array.from({length:9},(_,i)=>[i%3,Math.floor(i/3)]),
+ ell3:[[0,0],[0,1],[1,1]],ell4:[[0,0],[0,1],[0,2],[1,2]],jay4:[[1,0],[1,1],[0,2],[1,2]],tee4:[[0,0],[1,0],[2,0],[1,1]],zig4:[[1,0],[2,0],[0,1],[1,1]],diagonal2:[[0,0],[1,1]]
+};
+const examples={
+ dense:{board:['001000000','011000000','011100000','011001000','000011100','110011000','110010000','011100100','000110010'],pieces:[[[1,0],[1,1],[0,2],[1,2]],[[0,0],[0,1],[0,2]],[[0,0],[0,1],[1,1]]]},
+ sparse:{board:['000000000','000000000','000000000','000000000','000000000','010000000','000000000','000000100','000110010'],pieces:[[[1,0],[0,1],[1,1],[0,2]],[[1,0],[2,0],[0,1],[1,1]],[[0,0],[0,1],[1,1],[2,1]]]},
+ empty:{board:Array(9).fill('000000000'),pieces:[[[0,0]],[[0,0],[1,0]],[[0,0],[1,1]]]},
+ unlock:{board:['111111111','111111111','111111111','111111110','000000000','000000000','111111111','111111111','111111111'],pieces:[patterns.square3,patterns.single,patterns.ell3]}
+};
+let board=[],pieces=[],selected=0,cleared=0,suggestion=null,history=[],logs=[],pending=null,auto=false,version=0;
+function log(msg){logs.unshift(msg);logs=logs.slice(0,10);$('log').textContent=logs.join('\n')}
+function duplicate(a){return a.map(row=>row.slice())}
+function norm(p){if(!p||p.length===0)return null;const minX=Math.min(...p.map(t=>t[0])),minY=Math.min(...p.map(t=>t[1]));return p.map(([x,y])=>[x-minX,y-minY]);}
+function dims(p){return [1+Math.max(...p.map(t=>t[0])),1+Math.max(...p.map(t=>t[1]))]}
+function fits(b,p,col,row){return !!p&&p.every(([x,y])=>row+y<9&&col+x<9&&row+y>=0&&col+x>=0&&!b[row+y][col+x])}
+function play(b,p,col,row){const next=duplicate(b);for(const [x,y] of p)next[row+y][col+x]=1;
+ const eraseRows=[],eraseCols=[];
+ for(let i=0;i<9;i++){if(next[i].every(Boolean))eraseRows.push(i);if(next.every(row=>row[i]))eraseCols.push(i)}
+ for(let r=0;r<9;r++)for(let c=0;c<9;c++)if(eraseRows.includes(r)||eraseCols.includes(c))next[r][c]=0;
+ return {board:next,lines:eraseRows.length+eraseCols.length};
+}
+function regions(b){let seen=Array.from({length:9},()=>Array(9).fill(0)),count=0;for(let r=0;r<9;r++)for(let c=0;c<9;c++){if(b[r][c]||seen[r][c])continue;count++;let q=[[r,c]];seen[r][c]=1;for(let i=0;i<q.length;i++){const [y,x]=q[i];for(const [dr,dc] of [[1,0],[-1,0],[0,1],[0,-1]]){let ny=y+dr,nx=x+dc;if(ny<0||ny>=9||nx<0||nx>=9||seen[ny][nx]||b[ny][nx])continue;seen[ny][nx]=1;q.push([ny,nx])}}}return count}
+function setStatus(s){$('runState').textContent=s}
+function kill(){version++;if(pending){pending.terminate();pending=null;}setStatus('● SẴN SÀNG');}
+function stop(){auto=false;kill();log('■ Đã dừng');}
+function draw(){const el=$('board');el.replaceChildren();
+ const ghost=suggestion&&pieces[suggestion.pieceIndex];
+ for(let row=0;row<9;row++)for(let col=0;col<9;col++){
+  let b=document.createElement('button');b.type='button';b.className='cell'+(board[row][col]?' filled':'')+
+      (ghost&&ghost.some(([x,y])=>row===suggestion.row+y&&col===suggestion.col+x)?' ghost':'');
+  b.setAttribute('aria-label',`Hàng ${row+1}, cột ${col+1}`);b.onclick=()=>clicked(col,row);el.append(b);
+ }
+ const tray=$('tray');tray.replaceChildren();
+ pieces.forEach((p,index)=>{let btn=document.createElement('button');btn.type='button';btn.className='piece'+(index===selected?' active':'')+(p?'':' used');
+  let lab=document.createElement('strong');lab.textContent=`Khối ${index+1}`;btn.append(lab);
+  if(p){let [w,h]=dims(p);let div=document.createElement('div');div.className='tilegrid';div.style.gridTemplateColumns=`repeat(${w},15px)`;
+  for(let y=0;y<h;y++)for(let x=0;x<w;x++){let t=document.createElement('span');t.className='mini '+(p.some(([px,py])=>x===px&&y===py)?'fill':'empty');div.append(t)}btn.append(div);
+  }else{let txt=document.createElement('span');txt.textContent='Đã đặt';btn.append(txt)}
+  btn.onclick=()=>{selected=index;$('editingPiece').value=String(index);draw();drawEditor();};tray.append(btn);
+ });
+ $('filled').textContent=board.flat().filter(Boolean).length;
+ $('remain').textContent=pieces.filter(Boolean).length;
+ $('cleared').textContent=cleared;
+}
+function drawEditor(){let id=+$('editingPiece').value,p=pieces[id]||[],g=$('shapeEditor');g.replaceChildren();
+ for(let y=0;y<5;y++)for(let x=0;x<5;x++){let b=document.createElement('button');b.type='button';b.className='editorcell'+(p.some(([a,c])=>a===x&&c===y)?' active':'');b.title=`Cột ${x+1}, hàng ${y+1}`;
+ b.onclick=()=>{stop();const present=p.some(([a,c])=>a===x&&c===y);const updated=present?p.filter(([a,c])=>a!==x||c!==y):p.concat([[x,y]]);
+ pieces[id]=norm(updated);suggestion=null;draw();drawEditor();$('result').textContent='Đã sửa hình khối. Nhấn Phân tích để cập nhật.';};g.append(b)}
+}
+function showMove(m){if(!m){$('result').innerHTML='<b>Không còn vị trí hợp lệ cho các khối hiện tại.</b> Hãy kiểm tra hình khối và các ô đã tô.';return;}
+ const placed=play(board,pieces[m.pieceIndex],m.col,m.row);
+ $('result').innerHTML=`<b style="color:#68e0b7">✓ Ưu tiên khối ${m.pieceIndex+1}</b>
+ <div>Vị trí: <b>hàng ${m.row+1}, cột ${m.col+1}</b> (tọa độ góc trên trái)</div>
+ <div>Tối đa trong chuỗi tìm được: <b>${m.depth}</b> / ${pieces.filter(Boolean).length} khối</div>
+ <div>Xóa trong chuỗi: <b>${m.total}</b> hàng/cột; bước đầu: <b>${m.linesCleared}</b></div>
+ <div>Vùng trống: ${regions(board)} → ${regions(placed.board)}; ${m.closed>0?'còn vùng kín':'không tăng vùng kín ở cuối chuỗi'}</div>
+ <div class="label">Đã duyệt ${m.visited.toLocaleString('vi-VN')} vị trí; ${m.exhaustive?'đã xét hết trong lần tìm':'đã đạt giới hạn thời gian/tài nguyên'}.</div>`;
+}
+// Runs on a worker. STOP terminates even a long calculation immediately.
+function compute(){kill();const myVersion=version;setStatus('◌ ĐANG TÍNH');
+ return new Promise(resolve=>{
+   try{
+     const source=$('solverScript').textContent;
+     const url=URL.createObjectURL(new Blob([source],{type:'text/javascript'}));
+     const worker=new Worker(url);URL.revokeObjectURL(url);pending=worker;
+     worker.onmessage=e=>{worker.terminate();if(pending===worker)pending=null;
+       if(myVersion!==version){resolve(null);return}setStatus(auto?'▶ TỰ CHẠY':'● SẴN SÀNG');
+       if(e.data.error){log('Lỗi tính: '+e.data.error);resolve(null);return}
+       resolve(e.data.result)};
+     worker.onerror=e=>{worker.terminate();if(pending===worker)pending=null;log('Không chạy được bộ tính nền');setStatus('! LỖI TÍNH');resolve(null)};
+     worker.postMessage({id:1,state:{board:duplicate(board),pieces:pieces.map(p=>p?duplicate(p):null)},options:{timeoutMs:1500,maxVisit:330000}});
+   }catch(e){log('Trình duyệt không hỗ trợ mô phỏng nền: '+e.message);setStatus('! LỖI');resolve(null)}
+ });
+}
+async function analyze(logMsg=true){const m=await compute();if(version<0)return null;
+ suggestion=m;showMove(m);draw();if(logMsg)log(m?`◎ Gợi ý: khối ${m.pieceIndex+1} vào h${m.row+1} c${m.col+1}`:'Không tìm được nước đi');return m;
+}
+function put(m,manual=false){if(!m||!pieces[m.pieceIndex]||!fits(board,pieces[m.pieceIndex],m.col,m.row)){
+ log('Vị trí không hợp lệ');return false;}
+ const p=play(board,pieces[m.pieceIndex],m.col,m.row);
+ history.push({board:duplicate(board),pieces:pieces.map(v=>v?duplicate(v):null),cleared});
+ board=p.board;pieces[m.pieceIndex]=null;cleared+=p.lines;selected=pieces.findIndex(Boolean);if(selected<0)selected=0;
+ suggestion=null;log(`Đặt khối ${m.pieceIndex+1} tại h${m.row+1} c${m.col+1}`+(p.lines?` • xóa ${p.lines}`:''));draw();drawEditor();return true;
+}
+async function step(){const m=await analyze(false);if(!m)return false;return put(m)}
+function clicked(col,row){stop();if($('edit').checked){history.push({board:duplicate(board),pieces:pieces.map(v=>v?duplicate(v):null),cleared});board[row][col]=1-board[row][col];suggestion=null;log(`Chỉnh h${row+1} c${col+1}`);draw();$('result').textContent='Đã chỉnh bàn cờ; bấm Phân tích để cập nhật.';}else{
+ put({pieceIndex:selected,col,row},true);}
+}
+function load(name){stop();let state=examples[name];board=state.board.map(r=>[...r].map(Number));pieces=state.pieces.map(duplicate);selected=0;cleared=0;history=[];suggestion=null;$('editingPiece').value='0';
+ $('result').textContent='Đã tải tình huống. Nhấn Phân tích hoặc Tự chạy để đánh giá cả 3 khối.';
+ log('Tải tình huống '+name);draw();drawEditor()}
+$('scenario').onchange=e=>load(e.target.value);
+$('suggest').onclick=()=>{auto=false;analyze()};
+$('step').onclick=async()=>{auto=false;stop();await step()};
+$('auto').onclick=async()=>{stop();auto=true;setStatus('▶ TỰ CHẠY');let rounds=0;while(auto&&pieces.some(Boolean)&&rounds<3){const ok=await step();if(!auto||!ok)break;rounds++;await new Promise(r=>setTimeout(r,600));}if(auto){auto=false;setStatus('● SẴN SÀNG');log('Mô phỏng hoàn tất lượt hiện tại');}};
+$('stop').onclick=stop;
+$('reset').onclick=()=>load($('scenario').value);
+$('undo').onclick=()=>{stop();const last=history.pop();if(!last){log('Không còn bước hoàn tác');return}board=last.board;pieces=last.pieces;cleared=last.cleared;selected=pieces.findIndex(Boolean);if(selected<0)selected=0;suggestion=null;draw();drawEditor();$('result').textContent='Đã hoàn tác. Bấm Phân tích để tính lại.';log('Hoàn tác')};
+$('edit').onchange=()=>{stop();suggestion=null;draw()};
+$('editingPiece').onchange=()=>{selected=+$('editingPiece').value;draw();drawEditor()};
+$('shapePreset').onchange=()=>{if(!patterns[$('shapePreset').value])return;stop();pieces[+$('editingPiece').value]=duplicate(patterns[$('shapePreset').value]);suggestion=null;draw();drawEditor();$('result').textContent='Đã chọn hình mới. Nhấn Phân tích để tính lại.';};
+load('dense');
+})();
+
+</script></body></html>

@@ -1,0 +1,49 @@
+<!doctype html><html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Block Blast — Offline Screenshot Debug</title><style>
+:root{font-family:system-ui,sans-serif;color:#eee;background:#17212a}*{box-sizing:border-box}body{margin:0 auto;max-width:1100px;padding:20px}h1{font-size:23px}h2{font-size:16px}small{color:#b7c5cb}button,input{font:inherit}.card{background:#243441;border-radius:12px;padding:15px;margin-bottom:12px}.flex{display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap}.frame{max-width:100%;width:420px;background:#111;border:1px solid #456;position:relative;line-height:0}.frame img{width:100%}.frame canvas{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}button{background:#25a47d;color:white;border:0;padding:10px 16px;border-radius:7px;cursor:pointer}button:disabled{opacity:.5}#board{display:grid;grid-template-columns:repeat(9,1fr);gap:2px;background:#141d23;padding:5px;width:min(100%,342px);aspect-ratio:1}#board span{border-radius:2px;background:#5b4635}#board span.occ{background:#eac789}#board span.future{background:#50d6a0}#shapes{display:flex;gap:12px;flex-wrap:wrap}.shape{border-radius:8px;background:#273f4c;padding:8px;min-width:95px;text-align:center}.tiles{display:grid;gap:2px;justify-content:center;margin:7px}.tiles span{width:17px;height:17px}.tiles .on{background:#f1bf79;border-radius:2px}pre{white-space:pre-wrap;word-break:break-word;color:#b9d8de;font-size:12px}.notice{color:#f5db8a}
+</style></head><body>
+<h1>Block Blast — Kiểm tra ảnh offline</h1><p>Chọn ảnh chụp game; chương trình chạy <b>PixelAnalyzer và StrategyEngine Java của APK</b>, không dùng AI API, không cần GitHub.</p>
+<div class="card"><input id="file" type="file" accept="image/png,image/jpeg"> <button id="analyze" disabled>Phân tích ảnh</button><p><small>Mỗi lần thử sẽ chỉ phân tích ảnh, không thao tác trên điện thoại. Chạy local tại 127.0.0.1.</small></p></div>
+<div class="flex"><div class="card"><h2>Ảnh + khung nhận diện + nước đi đề xuất</h2><div class="frame"><img id="image" alt="Ảnh screenshot đã chọn"><canvas id="canvas"></canvas></div></div>
+<div style="flex:1;min-width:260px"><div class="card"><h2 id="status">Chưa có ảnh</h2><p id="info"></p><div id="board"></div></div><div class="card"><h2>Khối đã nhận</h2><div id="shapes"></div></div><div class="card"><h2>Dữ liệu JSON</h2><pre id="json"></pre></div></div></div>
+<script>
+let url=null, rawData=null;
+const $=s=>document.getElementById(s);
+$('file').addEventListener('change',e=>{const f=e.target.files[0];$('analyze').disabled=!f;if(url)URL.revokeObjectURL(url);if(f){url=URL.createObjectURL(f);$('image').src=url;}});
+$('analyze').addEventListener('click', async()=>{
+ const f=$('file').files[0];if(!f)return;
+ $('analyze').disabled=true;$('status').textContent='Đang phân tích...';
+ try{
+ const bytes=await f.arrayBuffer();const data=new Uint8Array(bytes);let parts=[];
+ for(let i=0;i<data.length;i+=16384){parts.push(String.fromCharCode(...data.subarray(i,i+16384)))}
+ const r=await fetch('/analyze',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({imageBase64:btoa(parts.join(''))})});
+ const out=await r.json();if(!r.ok)throw new Error(out.error||'Lỗi phân tích');rawData=out;render(out);
+ }catch(err){$('status').textContent='Lỗi: '+err.message;}finally{$('analyze').disabled=false}
+});
+function render(d){
+ $('status').textContent=d.status+' | độ tin cậy '+(d.confidence*100).toFixed(1)+'%';
+ const move=d.move;$('info').textContent=move?`Đề xuất: Khối ${move.piece+1}, hàng ${move.row+1}, cột ${move.col+1}; xóa ngay ${move.linesCleared} dòng`:'Không tìm được nước đi hợp lệ hoặc chưa nhận diện được.';
+ const b=$('board');b.innerHTML='';const n=d.board?.length||9;b.style.gridTemplateColumns=`repeat(${n},1fr)`;
+ if(d.board) d.board.forEach((row,r)=>row.forEach((v,c)=>{
+  const sp=document.createElement('span');sp.className=v?'occ':'';
+  if(move&&d.pieces[move.piece]?.tiles.some(t=>move.col+t[0]===c&&move.row+t[1]===r))sp.className='future';
+  b.append(sp);
+ }));
+ $('shapes').innerHTML='';d.pieces.forEach((p,i)=>{
+  const el=document.createElement('div');el.className='shape';
+  const label=document.createElement('b');label.textContent=`Khối ${i+1} (${p.tiles.length} ô)`;el.append(label);
+  const tiles=document.createElement('div');tiles.className='tiles';tiles.style.gridTemplateColumns=`repeat(${p.width},17px)`;
+  for(let y=0;y<p.height;y++)for(let x=0;x<p.width;x++){const s=document.createElement('span');if(p.tiles.some(t=>t[0]===x&&t[1]===y))s.className='on';tiles.append(s)}el.append(tiles);$('shapes').append(el)
+ });
+ $('json').textContent=JSON.stringify(d,null,2);paint(d);
+}
+function paint(d){
+ const img=$('image'),cv=$('canvas');if(!img.complete){img.onload=()=>paint(d);return}
+ cv.width=img.naturalWidth;cv.height=img.naturalHeight;const ctx=cv.getContext('2d');ctx.clearRect(0,0,cv.width,cv.height);
+ if(!d.boardBox)return;const box=d.boardBox,n=box.size,cw=box.width/n,ch=box.height/n;
+ ctx.lineWidth=Math.max(2,box.width/125);ctx.strokeStyle='#23e5ae';ctx.strokeRect(box.x,box.y,box.width,box.height);
+ ctx.lineWidth=Math.max(1,box.width/400);ctx.strokeStyle='#8feeda88';
+ for(let i=1;i<n;i++){ctx.beginPath();ctx.moveTo(box.x+i*cw,box.y);ctx.lineTo(box.x+i*cw,box.y+box.height);ctx.moveTo(box.x,box.y+i*ch);ctx.lineTo(box.x+box.width,box.y+i*ch);ctx.stroke()}
+ if(d.move){ctx.fillStyle='#36deae9e';for(const [x,y] of d.pieces[d.move.piece].tiles){ctx.fillRect(box.x+(d.move.col+x)*cw+2,box.y+(d.move.row+y)*ch+2,cw-4,ch-4)}}
+ ctx.fillStyle='#2acdfa';for(const p of d.pieces){ctx.beginPath();ctx.arc(p.touchX,p.touchY,5,0,Math.PI*2);ctx.fill()}
+}
+</script></body></html>

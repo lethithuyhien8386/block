@@ -16,6 +16,7 @@ import android.graphics.drawable.GradientDrawable;
 import android.view.Gravity;
 import android.view.View;
 import android.widget.Button;
+import android.widget.CheckBox;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.SeekBar;
@@ -83,6 +84,18 @@ public final class MainActivity extends Activity {
         });
         root.addView(offsetSlider);
         addSpace(root, 16);
+
+        CheckBox previewCheck = new CheckBox(this);
+        previewCheck.setText("CHỈ PHÂN TÍCH (không kéo) — dùng để kiểm tra trước");
+        previewCheck.setTextColor(Color.rgb(65, 44, 27));
+        previewCheck.setChecked(getSharedPreferences("bot", MODE_PRIVATE).getBoolean("previewOnly", false));
+        previewCheck.setOnCheckedChangeListener((compound, checked) ->
+                getSharedPreferences("bot", MODE_PRIVATE).edit().putBoolean("previewOnly", checked).apply());
+        root.addView(previewCheck);
+        root.addView(text("Khi bật, thanh nổi hiển thị khối/hàng/cột dự kiến và ghi Logcat, "
+                + "nhưng tuyệt đối không gọi lệnh kéo. TẮT rồi nhấn Stop → Start để cho phép kéo thật.",
+                13, Color.DKGRAY));
+        addSpace(root, 12);
 
         Button start = button("START — Mở thanh điều khiển nổi", this::requestScreen);
         start.setTextSize(17);

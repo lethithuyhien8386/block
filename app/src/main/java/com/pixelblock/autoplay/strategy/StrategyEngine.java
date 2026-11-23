@@ -157,8 +157,19 @@ public final class StrategyEngine {
         }
         int regions=countRegions(rows,n);
         int dead=0,small=0;
+        // Adapted from the uploaded desktop solver's adjacency heuristic:
+        // avoid leaving isolated placed cells and narrow disconnected voids.
+        int unsupportedFilled=0;
         for(int y=0;y<n;y++)for(int x=0;x<n;x++){
-            if((rows[y]&(1<<x))!=0)continue;
+            if((rows[y]&(1<<x))!=0) {
+                int neighbors=0;
+                if(y>0&&(rows[y-1]&(1<<x))!=0)neighbors++;
+                if(y<n-1&&(rows[y+1]&(1<<x))!=0)neighbors++;
+                if(x>0&&(rows[y]&(1<<(x-1)))!=0)neighbors++;
+                if(x<n-1&&(rows[y]&(1<<(x+1)))!=0)neighbors++;
+                unsupportedFilled+=Math.max(0,2-neighbors);
+                continue;
+            }
             int neighbors=0;
             if(y>0&&(rows[y-1]&(1<<x))==0)neighbors++;
             if(y<n-1&&(rows[y+1]&(1<<x))==0)neighbors++;
@@ -168,8 +179,22 @@ public final class StrategyEngine {
             if(neighbors==0)small++;
         }
         // Count unconstrained rectangles: 3×3 and 2×3 are common difficult future pieces.
-        int open3=0,open23=0,openLine=0;
+        int open3=0,open23=0,openLine=0,openSquare2=0,openLine4=0,openL=0;
         for(int y=0;y<n;y++){
+            for(int x=0;x<n;x++){
+                if(x+3<n && (rows[y] & (15<<x)) == 0)openLine4++;
+                if(y+3<n && ((rows[y]|rows[y+1]|rows[y+2]|rows[y+3])&(1<<x))==0)
+                    openLine4++;
+                if(x+1<n && y+1<n && ((rows[y]|rows[y+1])&(3<<x))==0)openSquare2++;
+                // Three-high L and mirrored L, still possible without a full 3x3 opening.
+                if(x+1<n && y+2<n) {
+                    int a=rows[y]>>>x, b=rows[y+1]>>>x, c=rows[y+2]>>>x;
+                    if((a&1)==0&&(b&1)==0&&(c&3)==0)openL++;
+                    if((a&2)==0&&(b&2)==0&&(c&3)==0)openL++;
+                    if((a&3)==0&&(b&1)==0&&(c&1)==0)openL++;
+                    if((a&3)==0&&(b&2)==0&&(c&2)==0)openL++;
+                }
+            }
             for(int x=0;x<=n-3;x++){
                 int m=7<<x;
                 if((rows[y]&m)==0)openLine++;
@@ -177,7 +202,10 @@ public final class StrategyEngine {
                 if(y+2<n&&(rows[y]&m)==0&&(rows[y+1]&m)==0&&(rows[y+2]&m)==0)open3++;
             }
         }
+        // Survival mobility for not-yet-visible shapes, plus both filled-cell and
+        // empty-cell fragmentation. Line clearing takes precedence in consider().
         return (n*n-occupied)*1.0 + almost*3.0 + open3*1.8 + open23*.7 + openLine*.2
+                +openSquare2*.13 + openLine4*.38 + openL*.11 -unsupportedFilled*.32
                 - dead*9.0 - small*35.0 - Math.max(0,regions-originalRegions)*90.0
                 - Math.max(0,regions-1)*9.0 + cleared*1.5;
     }

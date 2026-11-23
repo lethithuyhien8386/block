@@ -1,6 +1,31 @@
-# Pixel Block Auto v1.2.0 (source v5)
+# Pixel Block Auto v6 — Android + Offline Screenshot Dashboard
 
-**v1.2.0 / v5 (23 November 2026)**
+**Version:** `1.3.0` (`versionCode 6`) — project Android Java, bản sửa từ v5, kết hợp các ý tưởng trong `archive (1).zip` mà bạn cung cấp.
+
+## Những điểm mới của bản v6
+
+- **Đã tích hợp:** cách đánh giá độ linh hoạt và vùng bị phân mảnh của solver mẫu (`backend/core/solver.py`) vào `StrategyEngine.java`. Giữ bàn cờ phát hiện linh động **8×8 / 9×9 / 10×10**, giới hạn tìm kiếm ba khối và không tái sử dụng một khối nhiều lần. Có thể đặt khối ở vị trí khay bất kỳ trước, không cố định theo thứ tự.
+- **Bảo vệ khi kéo:** `MoveVerifier.java` dự đoán chính xác các ô sau khi thả (bao gồm xóa hàng/cột đồng thời); yêu cầu kết quả trên màn hình khớp dự đoán trong **hai khung hình**. Nếu không khớp, dừng thay vì tự động nhấn tiếp. Không còn hiểu nhầm thay đổi chữ trên thanh FLOAT là bằng chứng kéo thành công.
+- **Stop thực sự chặn thao tác mới:** kiểm tra lại trạng thái session **sau khi thuật toán tính xong** và ngay trước Accessibility. Những kết quả cũ bị bỏ khi đã nhấn Stop.
+- **Chế độ kiểm tra không kéo:** trong ứng dụng chính có ô **CHỈ PHÂN TÍCH (không kéo)**. Khi bật, thanh FLOAT hiển thị `XEM khối n Hx Cy`; chi tiết qua `adb logcat -s PixelBlock:I`. Mặc định **tắt** để nút Play vẫn có thể tự kéo theo yêu cầu của bạn.
+- **Dashboard để test trước GitHub:** `tools/screenshot-debug/start-dashboard.bat` (Windows) / `.sh` (macOS/Linux). Chỉ cần **JDK 17+ và Python 3**, mở `http://127.0.0.1:8765`, tải ảnh game lên. Giao diện vẽ khung bàn, vị trí khối, dự báo nước đi; sử dụng **đúng Java core của APK**, không cần AI API, không cần Android SDK, không cần Gradle và không truy cập internet. Có endpoint local `POST /analyze` tương tự file FastAPI/React bạn gửi.
+- **Đã kiểm tra:** 20 bài kiểm tra Java độc lập qua bộ chạy JUnit-compatible cục bộ, gồm 3 ảnh chụp thật (0, 5, 26 ô có khối), kích thước nhiều màn hình, khối hình khác nhau, nước đi nhiều bước và xác nhận kết quả sau kéo. Kết quả 20/20 đạt. Đã gọi thử `POST /analyze` local và nhận dữ liệu JSON hợp lệ từ ảnh thật.
+
+### Chạy thử nhanh không cần build APK
+
+1. Cài **JDK 17+** và **Python 3** trên Windows, đảm bảo gọi được `javac` và `python` trong Terminal.
+2. Giải nén toàn bộ ZIP. Bấm `tools/screenshot-debug/start-dashboard.bat`. Nếu Windows không nhận `python`, chạy `py dashboard.py` trong thư mục đó.
+3. Mở `http://127.0.0.1:8765` và chọn một ảnh screenshot. Nhấn **Phân tích ảnh** để xem: (a) bàn 8/9/10 ô, (b) các ô chiếm, (c) từng khối nhận diện, (d) gợi ý đặt, và (e) hình vẽ chồng lên ảnh.
+4. Sửa Java core, đóng terminal dashboard, khởi động lại để thử mã mới. Không cần GitHub.
+5. Chỉ khi kết quả đúng mới build APK bằng workflow ở dưới và kiểm tra chế độ **CHỈ PHÂN TÍCH** trên điện thoại, sau đó tắt và cho kéo.
+
+**Các giới hạn cần biết:** File ZIP đính kèm ban đầu là bộ mẫu desktop, không phải code Android có thể cài trực tiếp. `vision.py` của mẫu dùng ROI cố định và ngưỡng màu chung, `solver.py` cố định BOARD_N=8 và không theo dõi những khối đã dùng; `agent.py` chỉ click, không kéo. Vì vậy v6 **đưa các ý tưởng phù hợp sang Android**, không sao chép nguyên code Python. Không thể bảo đảm nước đi tối ưu cho các khối chưa xuất hiện; giới hạn tính toán cho phép ứng dụng đáp ứng trên máy yếu. **Chưa build/cài/kiểm chứng kéo thực tế trong môi trường hiện tại vì không có Android SDK**. Android 14+ vẫn cần người dùng chấp thuận SCREEN qua hộp thoại hệ thống.
+
+---
+
+# Ghi chú bản trước: Pixel Block Auto v1.2.0 (source v5)
+
+**Lịch sử v1.2.0 / v5 (23 November 2026)**
 
 - New `StrategyEngine`: bounded exhaustive lookahead of up to **three visible tray pieces in any order**. It first tries to place the highest possible number of currently visible pieces, then prefers completing rows/columns and avoiding newly sealed pockets, and uses 3×3, 2×3 and horizontal openings to estimate flexibility for unseen next pieces. A piece on the right can be the first choice. Importantly, the old v4 beam-width-32 bottleneck has been removed.
 - Bounded work: around **1.35 s** / **1.8 million legal candidate visits** maximum per decision, so it may stop early on very open boards; this is NOT a mathematical guarantee of a globally optimal move. Real performance varies by device.
@@ -53,7 +78,7 @@ The main screen has a **vertical finger offset** adjustment in units of board ce
 
 ## Troubleshooting v5
 
-- **“Chưa thấy bàn cờ” despite a visible game:** v4 includes two separate fixes for dark lines at the image edge and light occupied grid cells. Confirm you installed version **1.2.0** instead of 1.1.1; send a new screenshot if the theme/position differs greatly from the tested screenshot.
+- **“Chưa thấy bàn cờ” despite a visible game:** v4 includes two separate fixes for dark lines at the image edge and light occupied grid cells. Confirm you installed version **1.3.0** instead of 1.1.1; send a new screenshot if the theme/position differs greatly from the tested screenshot.
 - **Nothing happens; SCREEN has expired / no images:** tap the overlay **▶**, approve the Android screen-sharing dialog, return to the game. For Android 14+ full-display capture is requested via `MediaProjectionConfig.createConfigForDefaultDisplay()` (API 34). Verify that any device-specific screen-recording restrictions allow capture; protected game surfaces may show black.
 - **Seeing “Nhấn ▶ ở game”:** screen sharing exists but analysis is paused. Switch to the game, then press ▶.
 - **Recognized game but not placing:** confirm the Accessibility service is enabled. If a gesture is confirmed but blocks do not land, adjust the Y offset slider in the main app and try one supervised move.

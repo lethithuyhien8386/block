@@ -26,6 +26,7 @@ import android.view.WindowManager;
 
 import com.pixelblock.autoplay.vision.PixelAnalyzer;
 import com.pixelblock.autoplay.strategy.StrategyEngine;
+import com.pixelblock.autoplay.strategy.MoveVerifier;
 
 import java.nio.ByteBuffer;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -55,6 +56,9 @@ public final class CaptureService extends Service {
     private volatile boolean running, gestureInFlight, waitingForChange;
     private volatile long generation;
     private volatile long verifiedFrom;
+    private volatile MoveVerifier.Prediction pendingPrediction;
+    private volatile int verifiedStableFrames;
+    private volatile String dryRunShownFor;
     private volatile String previousFingerprint;
     private volatile String stableFingerprint;
     private volatile int stableFrames;
@@ -222,6 +226,7 @@ public final class CaptureService extends Service {
         waitingForChange = false;
         stableFingerprint = null;
         stableFrames = 0;
+        pendingPrediction = null; verifiedStableFrames = 0; dryRunShownFor = null;
         BotAccessibilityService.setActive(true);
         if (floating != null) floating.active(true);
         postStatus("Đang phân tích...");
@@ -236,6 +241,7 @@ public final class CaptureService extends Service {
         waitingForChange = false;
         stableFingerprint = null;
         stableFrames = 0;
+        pendingPrediction = null; verifiedStableFrames = 0; dryRunShownFor = null;
         if (floating != null) floating.active(false);
         postStatus(message);
     }
@@ -286,28 +292,43 @@ public final class CaptureService extends Service {
 
     private void processSnapshot(PixelAnalyzer.Snapshot s, long session, long now) {
         if (!running || generation != session) return;
+        // Verify the predicted occupied grid, not a generic change in pixels.
+        // The moving floating label or an animation can change the fingerprint
+        // without the block actually landing in the intended cells.
+        if (waitingForChange) {
+            if (MoveVerifier.matches(pendingPrediction, s)) {
+                verifiedStableFrames++;
+                if (verifiedStableFrames >= 2) {
+                    waitingForChange = false;
+                    pendingPrediction = null;
+                    stableFingerprint = null; stableFrames = 0;
+                    postStatus("Đã kiểm tra ô đích ✓");
+                } else {
+                    postStatus("Xác nhận bàn cờ 1/2");
+                    return;
+                }
+            } else {
+                verifiedStableFrames = 0;
+                if (now - verifiedFrom > 2600) {
+                    main.post(() -> { if (running && session == generation)
+                        pause("Sai vị trí / không thấy khối • chỉnh Y"); });
+                } else postStatus("Đang so khớp ô đích...");
+                return;
+            }
+        }
         if (!s.playable()) {
             stableFingerprint = null; stableFrames = 0;
-            if (waitingForChange && now - verifiedFrom > 1500) {
-                main.post(() -> { if (running && session == generation) pause("Không xác nhận được kéo"); });
-            } else if (!waitingForChange) postStatus(s.status);
+            postStatus(s.status);
             return;
         }
         String fingerprint = s.fingerprint();
-        if (waitingForChange) {
-            if (!fingerprint.equals(previousFingerprint)) {
-                waitingForChange = false;
-                stableFingerprint = null; stableFrames = 0;
-                postStatus("Đã đặt khối ✓");
-            } else if (now - verifiedFrom > 1500) {
-                main.post(() -> { if (running && session == generation) pause("Kéo chưa đúng - chỉnh Y"); });
-                return;
-            } else return;
-        }
         if (fingerprint.equals(stableFingerprint)) stableFrames++;
         else { stableFingerprint = fingerprint; stableFrames = 1; }
         if (stableFrames < 2) { postStatus(s.status); return; }
         StrategyEngine.Move best = strategy.bestMove(s);
+        // STOP can be pressed during the 1.35s deep search. Never dispatch a
+        // result calculated for an old, cancelled run.
+        if (!running || session != generation) return;
         if (best == null) { postStatus("Không có nước hợp lệ"); return; }
         // Touch coordinates cannot be reused if the device rotated since SCREEN approval.
         DisplayMetrics live = new DisplayMetrics();
@@ -328,9 +349,29 @@ public final class CaptureService extends Service {
         endX = Math.max(3, Math.min(deviceWidth - 4, endX));
         endY = Math.max(3, Math.min(deviceHeight - 4, endY));
         if (best.confidence < 0.55) { postStatus("Nhận diện chưa chắc"); return; }
+        MoveVerifier.Prediction prediction = MoveVerifier.predict(s, best);
+        if (prediction == null || prediction.linesCleared != best.linesCleared) {
+            postStatus("Nước đi không khớp luật - không kéo"); return;
+        }
+        boolean preview = getSharedPreferences("bot", MODE_PRIVATE).getBoolean("previewOnly", false);
+        if (preview) {
+            // Dry run: never call Accessibility while preview is enabled.
+            if (!fingerprint.equals(dryRunShownFor)) {
+                dryRunShownFor = fingerprint;
+                android.util.Log.i("PixelBlock", "PREVIEW khối=" + (best.pieceIndex + 1)
+                        + " hàng=" + (best.row + 1) + " cột=" + (best.col + 1)
+                        + " sẽ xóa=" + prediction.linesCleared);
+            }
+            postStatus("XEM khối " + (best.pieceIndex + 1) + " H" + (best.row + 1) + " C" + (best.col + 1));
+            stableFrames = 1; // a new screenshot is still analyzed when the board changes
+            return;
+        }
+        if (!running || session != generation) return;
         gestureInFlight = true;
         stableFingerprint = null;
         previousFingerprint = fingerprint;
+        pendingPrediction = prediction;
+        verifiedStableFrames = 0;
         postStatus("Kéo khối " + (best.pieceIndex + 1) + " → " + (best.row + 1) + "," + (best.col + 1));
         boolean accepted = BotAccessibilityService.drag(startX, startY, endX, endY,
                 success -> main.post(() -> {
@@ -350,7 +391,9 @@ public final class CaptureService extends Service {
     private void postStatus(String message) {
         if (message.equals(lastStatus)) return;
         lastStatus = message;
-        main.post(() -> { if (floating != null) floating.status(message); });
+        // An analysis callback queued before STOP must never overwrite the final
+        // "Đã dừng" indicator with an old "Kéo khối"/"Đang phân tích" label.
+        main.post(() -> { if (message.equals(lastStatus) && floating != null) floating.status(message); });
     }
 
     private void releaseCapture() {
