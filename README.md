@@ -1,5 +1,7 @@
 # Pixel Block Auto (Android 8.0–14+, Java)
 
+> **Build fix (2026-11-23):** `BotAccessibilityService` uses the correct Android API `AccessibilityService.GestureResultCallback` instead of the nonexistent `GestureDescription.GestureResultCallback`. This fixes the three `:app:compileDebugJavaWithJavac` errors reported in the build log. The CI build still needs to run on GitHub Actions to confirm full Android compilation and install.
+
 A screenshot-based Block Blast-style helper for the **9×9 wooden game layout** shown in `testdata/example-screen.png`, with experimental support for 8×8 and 10×10 layouts. It uses **on-device pixels only** (no AI key, no server, no network permission) and an Android Accessibility gesture to drag blocks.
 
 ## Build on GitHub

@@ -36,7 +36,7 @@ public final class BotAccessibilityService extends AccessibilityService {
             }
             GestureDescription desc = new GestureDescription.Builder()
                     .addStroke(new GestureDescription.StrokeDescription(path, 0, 240)).build();
-            boolean accepted = service.dispatchGesture(desc, new GestureDescription.GestureResultCallback() {
+            boolean accepted = service.dispatchGesture(desc, new AccessibilityService.GestureResultCallback() {
                 @Override public void onCompleted(GestureDescription gestureDescription) {
                     callback.completed(service.allowGestures.get());
                 }
