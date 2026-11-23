@@ -1,6 +1,12 @@
-# Pixel Block Auto (Android 8.0–14+, Java)
+# Pixel Block Auto v1.2.0 (source v5)
 
-> **v1.1.1 / source fix v4 (2026-11-23):** Fixes **“Chưa thấy bàn cờ”** on highly occupied boards: grid-separator contrast is now unsigned because occupied light tiles invert its brightness, and a vertical frame-edge fallback rejects a stray dark stripe at x=0. Tray search is positioned relative to the board rather than screen height, so tall/letterboxed displays do not skip the pieces. This patch was regression-tested against the user's exact failing screenshot. SCREEN permissions from v3 and gesture callback fix from v2 are retained. The complete Android APK must still be built in GitHub Actions.
+**v1.2.0 / v5 (23 November 2026)**
+
+- New `StrategyEngine`: bounded exhaustive lookahead of up to **three visible tray pieces in any order**. It first tries to place the highest possible number of currently visible pieces, then prefers completing rows/columns and avoiding newly sealed pockets, and uses 3×3, 2×3 and horizontal openings to estimate flexibility for unseen next pieces. A piece on the right can be the first choice. Importantly, the old v4 beam-width-32 bottleneck has been removed.
+- Bounded work: around **1.35 s** / **1.8 million legal candidate visits** maximum per decision, so it may stop early on very open boards; this is NOT a mathematical guarantee of a globally optimal move. Real performance varies by device.
+- Includes `tools/BlockBlast_Simulator_v5.html`: open locally in Chrome/Edge to edit the board and three block shapes, analyze, step, auto-run or stop WITHOUT pushing to GitHub. The simulator runs strategy on a background web worker, but does NOT test Android screen capture or gestures.
+- Regression tests now include a board where the small second-tray piece must be played first to clear a row and allow the 3×3 first-tray piece. **15 pure-Java tests passed locally**, without the Android SDK. APK build/installation and live game gestures remain unverified here.
+- Screen recognition logic and capture/accessibility from v4 are unchanged; if game screenshots are not recognized, improving strategy alone cannot fix capture/detection.
 
 A screenshot-based Block Blast-style helper for the **9×9 wooden game layout** shown in `testdata/example-screen.png`, with experimental support for 8×8 and 10×10 layouts. It uses **on-device pixels only** (no AI key, no server, no network permission) and an Android Accessibility gesture to drag blocks.
 
@@ -28,9 +34,9 @@ The main screen has a **vertical finger offset** adjustment in units of board ce
 ## How it works / limitations
 
 - Finds a large dark square board, estimates grid count from its repeated separator lines, classifies occupied tiles from board-background color, then segments bright wooden shapes from the tray on a pixel-by-pixel basis.
-- Tries all three available pieces **in any order**, using a bottom-up beam search (32 candidate board states per depth). A placement is rejected if it **creates a new disconnected empty region** without completing a clearing row/column. Completing a row/column is heavily rewarded, as is keeping accessible space and avoiding one-cell dead ends.
+- Searches up to three visible pieces **in any order** with bounded multi-step lookahead (not beam width 32). It optimizes, in sequence: (1) how many visible pieces fit, (2) rows and columns cleared, (3) avoidance of permanently separated empty regions, and (4) openness for future unknown pieces. It does not blindly reject a temporarily split region if later clearing a row or column repairs it. The fallback always returns a legal move if one exists.
 - On the **new screenshot that caused v3 to display “Chưa thấy bàn cờ”**, the updated detector recognizes a **9×9 board with 26 occupied cells** and **three tray pieces with 4, 3 and 3 tiles**. The strategy can choose a legal first move (middle vertical piece, row 7, column 9, counted from 1). No fixed left-to-right tray order is imposed.
-- **13 local Java tests** passed, including regression tests using the exact real image from this report (compressed RGB resource; **no** `java.awt`, `javax.imageio` or Android dependencies in unit tests). The image was additionally tested at widths of 320/360/448/600/720 px. CI runs the same tests before building.
+- **15 local Java tests** passed, including regression tests using the exact real image from this report (compressed RGB resource; **no** `java.awt`, `javax.imageio` or Android dependencies in unit tests). The image was additionally tested at widths of 320/360/448/600/720 px. CI runs the same tests before building.
 - Uses Android MediaProjection for frames and AccessibilityService `dispatchGesture` for touch; captures at a bounded rate, and checks that the observed board/tray changes after each move.
 - **Not guaranteed to work with every game theme, resolution, animation or drag mechanic.** Pixel thresholds are calibrated primarily on the provided screenshots. The new screenshot tests recognition and legal move planning, but live gesture accuracy **cannot** be proven from images alone. At runtime, the game UI may add status bars, popups or scale the pieces differently. The user should supervise the first moves.
 - Android requires users to approve MediaProjection; apps cannot silently bypass the confirmation prompt. If Android revokes screen projection for privacy reasons, the app must ask again. Android 15+ may impose additional capture-session restrictions. The manifest targets API 34 and runs on Android 8.0+ when platform policies allow.
@@ -39,15 +45,15 @@ The main screen has a **vertical finger offset** adjustment in units of board ce
 ## Source layout
 
 - `app/src/main/java/.../vision/PixelAnalyzer.java` — pixel detection, confidence estimates, piece normalization.
-- `app/src/main/java/.../strategy/StrategyEngine.java` — legal placements, line clearing, beam search.
+- `app/src/main/java/.../strategy/StrategyEngine.java` — bounded multi-block combinatorial search and survival scoring.
 - `CaptureService.java` — MediaProjection foreground service + safety/verification loop.
 - `BotAccessibilityService.java` — gestures only when enabled by user.
 - `FloatingControls.java` — draggable control bar.
 - `.github/workflows/android.yml` — build, signature checks, emulator smoke test, upload APK.
 
-## Troubleshooting v4
+## Troubleshooting v5
 
-- **“Chưa thấy bàn cờ” despite a visible game:** v4 includes two separate fixes for dark lines at the image edge and light occupied grid cells. Confirm you installed version **1.1.1** instead of 1.1.0; send a new screenshot if the theme/position differs greatly from the tested screenshot.
+- **“Chưa thấy bàn cờ” despite a visible game:** v4 includes two separate fixes for dark lines at the image edge and light occupied grid cells. Confirm you installed version **1.2.0** instead of 1.1.1; send a new screenshot if the theme/position differs greatly from the tested screenshot.
 - **Nothing happens; SCREEN has expired / no images:** tap the overlay **▶**, approve the Android screen-sharing dialog, return to the game. For Android 14+ full-display capture is requested via `MediaProjectionConfig.createConfigForDefaultDisplay()` (API 34). Verify that any device-specific screen-recording restrictions allow capture; protected game surfaces may show black.
 - **Seeing “Nhấn ▶ ở game”:** screen sharing exists but analysis is paused. Switch to the game, then press ▶.
 - **Recognized game but not placing:** confirm the Accessibility service is enabled. If a gesture is confirmed but blocks do not land, adjust the Y offset slider in the main app and try one supervised move.
