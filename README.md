@@ -1,6 +1,6 @@
 # Pixel Block Auto (Android 8.0–14+, Java)
 
-> **v1.1.0 / source fix v3 (2026-11-23):** The status **“Mở SCREEN lại”** reported by users means the screen capture session became invalid, so the bot had no pixels to analyze. On Android 14+ the app now explicitly requests **full-display capture**, with normal Android consent. When SCREEN is stopped, tap ▶ on the floating bar to open the system capture prompt again. `AccessibilityService.GestureResultCallback` fixes the previous Java compilation error. A full Android APK build/install still requires GitHub Actions.
+> **v1.1.1 / source fix v4 (2026-11-23):** Fixes **“Chưa thấy bàn cờ”** on highly occupied boards: grid-separator contrast is now unsigned because occupied light tiles invert its brightness, and a vertical frame-edge fallback rejects a stray dark stripe at x=0. Tray search is positioned relative to the board rather than screen height, so tall/letterboxed displays do not skip the pieces. This patch was regression-tested against the user's exact failing screenshot. SCREEN permissions from v3 and gesture callback fix from v2 are retained. The complete Android APK must still be built in GitHub Actions.
 
 A screenshot-based Block Blast-style helper for the **9×9 wooden game layout** shown in `testdata/example-screen.png`, with experimental support for 8×8 and 10×10 layouts. It uses **on-device pixels only** (no AI key, no server, no network permission) and an Android Accessibility gesture to drag blocks.
 
@@ -29,10 +29,10 @@ The main screen has a **vertical finger offset** adjustment in units of board ce
 
 - Finds a large dark square board, estimates grid count from its repeated separator lines, classifies occupied tiles from board-background color, then segments bright wooden shapes from the tray on a pixel-by-pixel basis.
 - Tries all three available pieces **in any order**, using a bottom-up beam search (32 candidate board states per depth). A placement is rejected if it **creates a new disconnected empty region** without completing a clearing row/column. Completing a row/column is heavily rewarded, as is keeping accessible space and avoiding one-cell dead ends.
-- On the user's screenshot `image(20261123-071141).png`, the engine detects a 9×9 board and 3 pieces and selects the **right-hand L piece** first, targeting row index 7 and column index 0 (zero-based). The observed board had five occupied cells.
-- The pure-Java test suite covers region preservation, bottom-up preference, clearing lines, arbitrary tray order, and 8/9/10-grid image recognition (10 tests in total). The new screenshot was also tested at 320/360/446/600/720 px widths outside CI, with consistent recognized geometry.
+- On the **new screenshot that caused v3 to display “Chưa thấy bàn cờ”**, the updated detector recognizes a **9×9 board with 26 occupied cells** and **three tray pieces with 4, 3 and 3 tiles**. The strategy can choose a legal first move (middle vertical piece, row 7, column 9, counted from 1). No fixed left-to-right tray order is imposed.
+- **13 local Java tests** passed, including regression tests using the exact real image from this report (compressed RGB resource; **no** `java.awt`, `javax.imageio` or Android dependencies in unit tests). The image was additionally tested at widths of 320/360/448/600/720 px. CI runs the same tests before building.
 - Uses Android MediaProjection for frames and AccessibilityService `dispatchGesture` for touch; captures at a bounded rate, and checks that the observed board/tray changes after each move.
-- **Not guaranteed to work with every game theme, resolution, animation or drag mechanic.** Pixel thresholds are calibrated primarily on the provided screenshot. The screenshot is a static empty board, so live gesture accuracy **cannot** be proven from the image alone. At runtime, the game UI may add status bars, popups or scale the pieces differently. The user should supervise the first moves.
+- **Not guaranteed to work with every game theme, resolution, animation or drag mechanic.** Pixel thresholds are calibrated primarily on the provided screenshots. The new screenshot tests recognition and legal move planning, but live gesture accuracy **cannot** be proven from images alone. At runtime, the game UI may add status bars, popups or scale the pieces differently. The user should supervise the first moves.
 - Android requires users to approve MediaProjection; apps cannot silently bypass the confirmation prompt. If Android revokes screen projection for privacy reasons, the app must ask again. Android 15+ may impose additional capture-session restrictions. The manifest targets API 34 and runs on Android 8.0+ when platform policies allow.
 - The CI smoke test checks **install and activity launch**, not actual gameplay (a test emulator doesn't have the third-party game installed). Gesture placement must be tested on-device.
 
@@ -45,8 +45,9 @@ The main screen has a **vertical finger offset** adjustment in units of board ce
 - `FloatingControls.java` — draggable control bar.
 - `.github/workflows/android.yml` — build, signature checks, emulator smoke test, upload APK.
 
-## Troubleshooting v3
+## Troubleshooting v4
 
+- **“Chưa thấy bàn cờ” despite a visible game:** v4 includes two separate fixes for dark lines at the image edge and light occupied grid cells. Confirm you installed version **1.1.1** instead of 1.1.0; send a new screenshot if the theme/position differs greatly from the tested screenshot.
 - **Nothing happens; SCREEN has expired / no images:** tap the overlay **▶**, approve the Android screen-sharing dialog, return to the game. For Android 14+ full-display capture is requested via `MediaProjectionConfig.createConfigForDefaultDisplay()` (API 34). Verify that any device-specific screen-recording restrictions allow capture; protected game surfaces may show black.
 - **Seeing “Nhấn ▶ ở game”:** screen sharing exists but analysis is paused. Switch to the game, then press ▶.
 - **Recognized game but not placing:** confirm the Accessibility service is enabled. If a gesture is confirmed but blocks do not land, adjust the Y offset slider in the main app and try one supervised move.

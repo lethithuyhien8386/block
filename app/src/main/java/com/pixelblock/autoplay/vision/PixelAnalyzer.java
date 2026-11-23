@@ -171,6 +171,13 @@ public final class PixelAnalyzer {
         // Remove stray thin dark lines at screen edges (otherwise bridging could merge
         // x=0 with the real board at x=48, shifting all gesture targets).
         int[] refined = refineHorizontalEdges(t, b, minWidth);
+        if (refined == null) {
+            // On almost-full boards, bright blocks split the dark horizontal run into
+            // separate columns.  A 1px dark stripe at x=0 may then get bridged into
+            // the board, producing a false left edge. Detect both real frame borders
+            // by their persistent light-to-dark/dark-to-light vertical transitions.
+            refined = refineEdgesByContrast(t, b, minWidth);
+        }
         if (refined != null) { l = refined[0]; r = refined[1]; }
         double ratio = (b - t) / (double) (r - l);
         if (ratio < .76 || ratio > 1.23) return null;
@@ -202,6 +209,51 @@ public final class PixelAnalyzer {
         return bestR - bestL >= minWidth ? new int[]{bestL, bestR} : null;
     }
 
+    /** Alternative frame-edge detector when colored cells split the dark interior.
+     * The window is constrained by a previously detected long vertical span, and
+     * candidates must form a near-square rectangle with that span. */
+    private int[] refineEdgesByContrast(int top, int bottom, int minWidth) {
+        int verticalSize = bottom - top;
+        int yStart = Math.max(0, top + Math.max(5, verticalSize / 25));
+        int yEnd = Math.min(height - 1, bottom - Math.max(5, verticalSize / 25));
+        if (yEnd - yStart < 30 || width < 24) return null;
+        int yStep = Math.max(3, verticalSize / 50);
+        int xPad = Math.max(3, width / 95);
+        double[] leftScores = new double[width];
+        double[] rightScores = new double[width];
+        for (int x = xPad + 2; x < width - xPad - 2; x++) {
+            double contrast = 0;
+            int samples = 0;
+            for (int y = yStart; y < yEnd; y += yStep) {
+                // Pixel samples at equal distances on both sides of the edge.
+                // Averaging reduces the effect of the thin black border itself.
+                int outside = 0, inside = 0;
+                for (int k = 2; k <= xPad + 1; k++) {
+                    outside += luma(data[y * width + x - k]);
+                    inside += luma(data[y * width + x + k]);
+                }
+                contrast += (outside - inside) / (double) xPad;
+                samples++;
+            }
+            leftScores[x] = contrast / samples;
+            rightScores[x] = -leftScores[x];
+        }
+        int bestLeft = -1, bestRight = -1;
+        double bestScore = 0;
+        int minSize = Math.max(minWidth, (int) (verticalSize * .78));
+        int maxSize = Math.min((int) (width * .97), (int) (verticalSize * 1.23));
+        for (int left = xPad + 2; left < width - minSize; left++) {
+            if (leftScores[left] < 24) continue;
+            for (int right = left + minSize; right <= Math.min(width - xPad - 3, left + maxSize); right++) {
+                if (rightScores[right] < 24) continue;
+                double squareness = Math.abs((right - left) - verticalSize) / (double) verticalSize;
+                double score = leftScores[left] + rightScores[right] - 35 * squareness;
+                if (score > bestScore) { bestScore = score; bestLeft = left; bestRight = right; }
+            }
+        }
+        return bestLeft < 0 ? null : new int[]{bestLeft, bestRight};
+    }
+
     private boolean validateCached(BoardBox box) {
         if (box.right >= width || box.bottom >= height || box.left < 0 || box.top < 0) return false;
         // Empty wooden cells remain dark even when some brightly colored pieces occupy others.
@@ -230,12 +282,14 @@ public final class PixelAnalyzer {
             int y = (int) (t + (j + 0.5) * dy);
             int xLine = (int) (l + i * dx);
             int xCell = (int) (l + (i - 0.5) * dx);
-            sum += neighborhoodLuma(xLine, y, 1) - neighborhoodLuma(xCell, y, 2);
+            // Grid lines are brighter than empty dark cells but DARKER than filled
+            // pale blocks. Signed contrast cancels out on a populated board.
+            sum += Math.abs(neighborhoodLuma(xLine, y, 1) - neighborhoodLuma(xCell, y, 2));
             int x = (int) (l + (j + .5) * dx);
             int yLine = (int) (t + i * dy);
             int yCell = (int) (t + (i - .5) * dy);
             if (x >= 0 && x < width) {
-                sum += neighborhoodLuma(x, yLine, 1) - neighborhoodLuma(x, yCell, 2);
+                sum += Math.abs(neighborhoodLuma(x, yLine, 1) - neighborhoodLuma(x, yCell, 2));
                 count++;
             }
             count++;
@@ -245,8 +299,12 @@ public final class PixelAnalyzer {
 
     private List<Piece> findPieces(BoardBox board) {
         // Avoid booster buttons just under the board: scan the *lower tray*.
-        int startY = Math.min(height - 1, Math.max(board.bottom + (int) (height * .11), (int) (height * .72)));
-        int endY = height - Math.max(2, height / 140);
+        // Use the detected board's CELL SIZE rather than a percentage of screen
+        // height. Some phones letterbox the game and have large bottom margins;
+        // height * .72 can start BELOW all three pieces on those devices.
+        int startY = Math.min(height - 1, board.bottom + Math.max(9, (int) (board.pitch() * 1.85)));
+        int endY = Math.min(height - Math.max(2, height / 140),
+                board.bottom + (int) (board.pitch() * 5.75));
         if (startY >= endY - 10) return Collections.emptyList();
         int trayH = endY - startY;
         byte[] mask = new byte[width * trayH];
