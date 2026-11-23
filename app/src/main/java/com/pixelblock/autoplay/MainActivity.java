@@ -5,6 +5,7 @@ import android.app.Activity;
 import android.content.Intent;
 import android.content.Context;
 import android.media.projection.MediaProjectionManager;
+import android.media.projection.MediaProjectionConfig;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -22,6 +23,9 @@ import android.widget.TextView;
 
 public final class MainActivity extends Activity {
     private static final int REQUEST_CAPTURE = 101;
+    /** Used only after a user explicitly taps ▶ on the floating overlay / notification. */
+    public static final String ACTION_REAUTHORIZE = "com.pixelblock.autoplay.REAUTHORIZE";
+    private boolean resumeAfterPermission;
     private TextView accessibilityInfo, overlayInfo, screenInfo, offsetInfo;
 
     @Override public void onCreate(Bundle savedInstanceState) {
@@ -92,9 +96,15 @@ public final class MainActivity extends Activity {
         addSpace(root, 12);
         root.addView(text("Sau khi mở thanh nổi, hãy chuyển sang game rồi nhấn ▶ trên thanh nổi. "
                 + "Kéo thanh bằng vùng chữ. ■ dừng, × đóng. "
-                + "Nếu khối rơi lệch, chỉnh Bù kéo Y rồi khởi động lại.", 13, Color.DKGRAY));
+                + "Nếu hiện SCREEN đã ngắt/SCREEN thiếu ảnh, nhấn ▶ để cấp SCREEN lại. "
+                + "Nếu khối rơi lệch, chỉnh Bù kéo Y rồi thử lại.", 13, Color.DKGRAY));
 
-        if (Build.VERSION.SDK_INT >= 33
+        if (ACTION_REAUTHORIZE.equals(getIntent().getAction())) {
+            root.post(() -> beginFreshScreenPermission(true));
+        }
+
+        if (!ACTION_REAUTHORIZE.equals(getIntent().getAction())
+                && Build.VERSION.SDK_INT >= 33
                 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)
                 != android.content.pm.PackageManager.PERMISSION_GRANTED) {
             requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, 201);
@@ -105,6 +115,19 @@ public final class MainActivity extends Activity {
         float offset = (progress - 10) / 10f;
         offsetInfo.setText(String.format(java.util.Locale.US, "Bù kéo Y: %+.1f ô (mặc định +1.5)", offset));
     }
+    @Override protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        if (ACTION_REAUTHORIZE.equals(intent.getAction())) {
+            new android.os.Handler(getMainLooper()).post(() -> beginFreshScreenPermission(true));
+        }
+    }
+
+    private void beginFreshScreenPermission(boolean autoPlay) {
+        resumeAfterPermission = autoPlay;
+        requestScreen();
+    }
+
     private void requestScreen() {
         if (!BotAccessibilityService.isAvailable()) {
             accessibilityInfo.setText("⚠ Cần bật CLICK rồi quay lại.");
@@ -118,7 +141,13 @@ public final class MainActivity extends Activity {
             return;
         }
         MediaProjectionManager mgr = (MediaProjectionManager) getSystemService(Context.MEDIA_PROJECTION_SERVICE);
-        startActivityForResult(mgr.createScreenCaptureIntent(), REQUEST_CAPTURE);
+        // Android 14+ defaults to sharing ONE app, which may stop producing game
+        // frames as soon as the user changes apps. Request the full display,
+        // still with the Android system's explicit consent dialog.
+        Intent consent = Build.VERSION.SDK_INT >= 34
+                ? mgr.createScreenCaptureIntent(MediaProjectionConfig.createConfigForDefaultDisplay())
+                : mgr.createScreenCaptureIntent();
+        startActivityForResult(consent, REQUEST_CAPTURE);
     }
     @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
@@ -127,11 +156,15 @@ public final class MainActivity extends Activity {
             service.setAction(CaptureService.ACTION_OPEN);
             service.putExtra(CaptureService.RESULT_CODE, resultCode);
             service.putExtra(CaptureService.RESULT_DATA, data);
+            service.putExtra(CaptureService.RESUME_AFTER_PERMISSION, resumeAfterPermission);
             if (Build.VERSION.SDK_INT >= 26) startForegroundService(service);
             else startService(service);
-            screenInfo.setText("✓ Đã cho phép phiên chụp hiện tại. Chuyển sang game, nhấn ▶.");
+            screenInfo.setText("✓ SCREEN đã xác nhận. Hãy chọn 'Toàn bộ màn hình' và quay lại game.");
+            if (resumeAfterPermission) moveTaskToBack(true);
+            resumeAfterPermission = false;
         } else if (requestCode == REQUEST_CAPTURE) {
-            screenInfo.setText("Chưa có quyền SCREEN. Android yêu cầu bạn xác nhận khi bắt đầu phiên chụp.");
+            screenInfo.setText("Chưa có quyền SCREEN. Bấm Start và chọn chia sẻ toàn bộ màn hình.");
+            resumeAfterPermission = false;
         }
     }
     @Override protected void onResume() {

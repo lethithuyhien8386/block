@@ -1,6 +1,7 @@
 package com.pixelblock.autoplay;
 
 import android.app.Notification;
+import android.app.PendingIntent;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.Service;
@@ -37,6 +38,7 @@ public final class CaptureService extends Service {
     public static final String ACTION_CLOSE = "com.pixelblock.autoplay.CLOSE";
     public static final String RESULT_CODE = "projectionResultCode";
     public static final String RESULT_DATA = "projectionResultIntent";
+    public static final String RESUME_AFTER_PERMISSION = "resumeAfterPermission";
     private static final String CHANNEL_ID = "pixelblock_capture";
     private static final int NOTIFICATION_ID = 22;
 
@@ -57,10 +59,24 @@ public final class CaptureService extends Service {
     private volatile String stableFingerprint;
     private volatile int stableFrames;
     private volatile long lastFrameAt;
+    private volatile long lastImageAt;
+    private final Runnable captureWatchdog = new Runnable() {
+        @Override public void run() {
+            if (running && projection != null &&
+                    SystemClock.elapsedRealtime() - lastImageAt > 3500) {
+                postStatus("SCREEN thiếu ảnh ▶");
+            }
+            main.postDelayed(this, 1500);
+        }
+    };
     private volatile String lastStatus = "";
     private int deviceWidth, deviceHeight, captureWidth, captureHeight;
 
     @Override public IBinder onBind(Intent intent) { return null; }
+    @Override public void onCreate() {
+        super.onCreate();
+        main.postDelayed(captureWatchdog, 1500);
+    }
 
     @Override public int onStartCommand(Intent intent, int flags, int startId) {
         String action = intent == null ? "" : intent.getAction();
@@ -81,19 +97,27 @@ public final class CaptureService extends Service {
         releaseCapture();
         try {
             createForegroundNotification();
+            ensureFloatingControls();
             MediaProjectionManager manager = (MediaProjectionManager)
                     getSystemService(Context.MEDIA_PROJECTION_SERVICE);
             int code = intent.getIntExtra(RESULT_CODE, 0);
             @SuppressWarnings("deprecation")
             Intent data = (Intent) intent.getParcelableExtra(RESULT_DATA);
             if (data == null || code != android.app.Activity.RESULT_OK) {
-                postStatus("Thiếu quyền SCREEN"); stopSelf(); return;
+                postStatus("Thiếu SCREEN • ▶"); return;
             }
             projection = manager.getMediaProjection(code, data);
-            if (projection == null) { postStatus("Không khởi tạo SCREEN"); stopSelf(); return; }
+            if (projection == null) { postStatus("SCREEN lỗi • ▶"); return; }
+            // A projection may be revoked on app switches or when Android captures
+            // just one app. Never let an OLD callback tear down a NEW projection.
+            final MediaProjection token = projection;
             projection.registerCallback(new MediaProjection.Callback() {
                 @Override public void onStop() {
-                    main.post(() -> { pause("SCREEN đã kết thúc"); releaseCapture(); });
+                    main.post(() -> {
+                        if (projection != token) return;
+                        pause("SCREEN đã ngắt • ▶");
+                        releaseCapture();
+                    });
                 }
             }, main);
             WindowManager wm = (WindowManager) getSystemService(WINDOW_SERVICE);
@@ -105,28 +129,44 @@ public final class CaptureService extends Service {
             captureHeight = Math.max(1, Math.round(deviceHeight * (captureWidth / (float) deviceWidth)));
             workerThread = new HandlerThread("pixel-analysis"); workerThread.start();
             worker = new Handler(workerThread.getLooper());
+            lastImageAt = SystemClock.elapsedRealtime();
             reader = ImageReader.newInstance(captureWidth, captureHeight, PixelFormat.RGBA_8888, 3);
             reader.setOnImageAvailableListener(this::onImage, worker);
             display = projection.createVirtualDisplay("pixelblock_capture", captureWidth, captureHeight,
                     dm.densityDpi, DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
                     reader.getSurface(), null, worker);
-            if (floating == null) {
-                floating = new FloatingControls(this, new FloatingControls.Listener() {
-                    @Override public void start() { resume(); }
-                    @Override public void stop() { pause("Đã dừng"); }
-                    @Override public void close() { shutDown(); }
-                });
-            }
-            floating.show();
             floating.active(false);
             postStatus("Nhấn ▶ ở game");
+            if (intent.getBooleanExtra(RESUME_AFTER_PERMISSION, false)) {
+                // Explicitly initiated by the user via ▶; analysis can run while
+                // the user switches back to the game (no movement until board seen).
+                resume();
+            }
         } catch (Exception ex) {
             android.util.Log.e("PixelBlock", "Screen capture setup failed", ex);
-            postStatus("Lỗi SCREEN: xem Logcat");
-            pause("Không chụp được");
+            pause("SCREEN lỗi • ▶");
             releaseCapture();
-            stopSelf();
+            // Leave the overlay visible so ▶ can request a fresh capture token.
+            // If foreground setup itself failed, Android will stop the service.
+            if (floating == null) stopSelf();
         }
+    }
+
+    private void ensureFloatingControls() {
+        if (floating == null) {
+            floating = new FloatingControls(this, new FloatingControls.Listener() {
+                @Override public void start() {
+                    if (projection == null || reader == null ||
+                            SystemClock.elapsedRealtime() - lastImageAt > 3500) {
+                        requestFreshPermission();
+                    } else resume();
+                }
+                @Override public void stop() { pause("Đã dừng"); }
+                @Override public void close() { shutDown(); }
+            });
+        }
+        floating.show();
+        floating.active(false);
     }
 
     private void createForegroundNotification() {
@@ -139,17 +179,42 @@ public final class CaptureService extends Service {
         }
         Notification.Builder builder = Build.VERSION.SDK_INT >= 26
                 ? new Notification.Builder(this, CHANNEL_ID) : new Notification.Builder(this);
+        Intent reopen = new Intent(this, MainActivity.class);
+        reopen.setAction(MainActivity.ACTION_REAUTHORIZE);
+        reopen.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP
+                | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+        PendingIntent reopenTap = PendingIntent.getActivity(this, 100, reopen,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
         Notification notification = builder.setContentTitle("Pixel Block Auto")
                 .setContentText("Đang chia sẻ màn hình. ■ để dừng, × để đóng.")
                 .setSmallIcon(android.R.drawable.ic_media_play)
+                .setContentIntent(reopenTap)
                 .setOngoing(true).build();
         if (Build.VERSION.SDK_INT >= 29) {
             startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION);
         } else startForeground(NOTIFICATION_ID, notification);
     }
 
+    private void requestFreshPermission() {
+        postStatus("Cấp lại SCREEN…");
+        Intent again = new Intent(this, MainActivity.class);
+        again.setAction(MainActivity.ACTION_REAUTHORIZE);
+        again.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP
+                | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+        try {
+            startActivity(again);
+        } catch (RuntimeException ex) {
+            android.util.Log.e("PixelBlock", "Cannot open screen consent", ex);
+            postStatus("Mở app cấp SCREEN");
+        }
+    }
+
     private void resume() {
-        if (projection == null || reader == null) { postStatus("Mở SCREEN lại"); return; }
+        if (projection == null || reader == null) {
+            // This is not a vision failure: without a live MediaProjection no
+            // pixels can be read. ▶ is wired to re-request system consent.
+            postStatus("SCREEN hết hạn • ▶"); return;
+        }
         if (!BotAccessibilityService.isAvailable()) { postStatus("Cấp quyền CLICK"); return; }
         generation++;
         running = true;
@@ -179,7 +244,9 @@ public final class CaptureService extends Service {
         Image image = null;
         try {
             image = imageReader.acquireLatestImage();
-            if (image == null || !running || gestureInFlight || !analyzing.compareAndSet(false, true)) return;
+            if (image == null) return;
+            lastImageAt = SystemClock.elapsedRealtime();
+            if (!running || gestureInFlight || !analyzing.compareAndSet(false, true)) return;
             long now = SystemClock.elapsedRealtime();
             if (now - lastFrameAt < 180) return;
             lastFrameAt = now;
@@ -307,6 +374,7 @@ public final class CaptureService extends Service {
         stopSelf();
     }
     @Override public void onDestroy() {
+        main.removeCallbacks(captureWatchdog);
         pause("Đã đóng");
         if (floating != null) { floating.remove(); floating = null; }
         releaseCapture();

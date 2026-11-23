@@ -34,7 +34,7 @@ public final class PixelAnalyzer {
         public final int touchCol, touchRow;
         public final int columns, rows;
         public final double confidence;
-        Piece(List<Tile> tiles, float x, float y, int col, int row, int columns, int rows, double confidence) {
+        public Piece(List<Tile> tiles, float x, float y, int col, int row, int columns, int rows, double confidence) {
             this.tiles = Collections.unmodifiableList(tiles);
             this.touchX = x; this.touchY = y; this.touchCol = col; this.touchRow = row;
             this.columns = columns; this.rows = rows; this.confidence = confidence;
@@ -46,7 +46,7 @@ public final class PixelAnalyzer {
         public final List<Piece> pieces;
         public final double confidence;
         public final String status;
-        Snapshot(BoardBox b, boolean[][] o, List<Piece> p, double c, String s) {
+        public Snapshot(BoardBox b, boolean[][] o, List<Piece> p, double c, String s) {
             board = b; occupied = o; pieces = p; confidence = c; status = s;
         }
         public boolean playable() { return board != null && confidence >= 0.57 && !pieces.isEmpty(); }
