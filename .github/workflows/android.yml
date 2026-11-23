@@ -1,0 +1,79 @@
+name: Build and launch-test Android APK
+
+on:
+  push:
+    branches: ["main", "master"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-smoke-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      # IMPORTANT: Do NOT use the obsolete sdkmanager package named "tools".
+      - name: Android command line SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: 'platform-tools platforms;android-35 build-tools;35.0.0'
+
+      - name: Gradle 8.10.2
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
+
+      - name: Unit tests and signed debug APK
+        run: gradle --no-daemon --stacktrace :app:testDebugUnitTest :app:assembleDebug
+
+      - name: Verify APK metadata, integrity and signature
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="app/build/outputs/apk/debug/app-debug.apk"
+          test -s "$APK"
+          unzip -t "$APK" >/dev/null
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | tee /tmp/apk-badging.txt
+          grep -q "package: name='com.pixelblock.autoplay'" /tmp/apk-badging.txt
+          grep -q "sdkVersion:'26'" /tmp/apk-badging.txt
+          grep -q "versionCode='1' versionName='1.0.0'" /tmp/apk-badging.txt
+          sha256sum "$APK"
+
+      - name: Enable KVM for Android Emulator
+        run: |
+          if [ -e /dev/kvm ]; then sudo chmod 666 /dev/kvm; fi
+
+      - name: Install APK and launch MainActivity in emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          arch: x86_64
+          profile: pixel_6
+          target: google_apis
+          disable-animations: true
+          script: |
+            set -e
+            adb install -r app/build/outputs/apk/debug/app-debug.apk
+            adb shell am start -W -n com.pixelblock.autoplay/.MainActivity
+            sleep 4
+            adb shell pidof com.pixelblock.autoplay | grep -Eq '[0-9]+'
+            adb shell dumpsys activity activities | grep -q com.pixelblock.autoplay
+
+      - name: Upload buildable, debug-signed APK
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: PixelBlockAuto-debug-APK
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: warn
