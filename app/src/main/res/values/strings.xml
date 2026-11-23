@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">Pixel Block Auto</string>
+    <string name="accessibility_desc">Chỉ kéo thả trên màn hình khi bạn nhấn Start. Không gửi ảnh hay dữ liệu lên mạng.</string>
+</resources>
